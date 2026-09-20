@@ -84,6 +84,18 @@ Just a single `exe` (signed with a trusted certificate) written in C++ with zero
 ### Optional:
 - `nvngx_dlss.dll` - Enables use of super resolution options. Also put that next to the `exe`.
 
+### RTX 40 compatibility mode
+
+This fork can explicitly allow a modified `nvngx_dlssnr.dll` for RTX 40 compatibility experiments:
+
+```
+FullScreenWrapperForDLSS5.exe --allow-modified-dlssnr on
+```
+
+Driver `616.64` or newer is still required because the wrapper continues to use the driver's NGX feature-18 support. The switch does **not** bypass the driver capability checks and does not permit modified NGX, DLSS Super Resolution, or optical-flow runtime DLLs. It only relaxes Authenticode verification for `nvngx_dlssnr.dll`.
+
+The modified model is third-party code executed inside this process. This repository does not ship one, and the wrapper cannot establish its provenance when this mode is enabled.
+
 ------
 
 # How It Works

@@ -465,10 +465,10 @@ struct Ended
                 });
             };
 
-            // A model is a DLL the loader picks up by name from a folder anyone may write to, so what is found there
-            // is checked and then held open for the life of the session, whether or not the session will use it: the
-            // loader may open it all the same. A missing file is left to the loader, which says so better: neural
-            // rendering stops without one, and super resolution has the driver's own copy.
+            // A model is a DLL the loader picks up by name from a folder anyone may write to. Each file is accepted
+            // under its explicit policy and then held open for the life of the session. Compatibility mode changes
+            // only the neural model's policy; every other locally supplied NVIDIA DLL still requires verification.
+            // A missing file is left to the loader, which says so better.
             static constexpr auto HeldModel = [] [[nodiscard]] (const Console& console, const std::optional<interior::FilePath>& file, real::ModelKind kind,
                                                                 std::string_view name, bool allowModifiedDlssnr) noexcept -> Result<std::optional<real::HeldFile>, Error> {
                 static constexpr auto IsModifiedNeuralModel = [] [[nodiscard]] (real::ModelKind kind, bool allowed) noexcept -> bool {
@@ -526,7 +526,7 @@ struct Ended
                 return wanted ? found : std::nullopt;
             };
 
-            // Every loadable file that is there, checked in turn and held in its slot, whenever NGX is started at all.
+            // Every loadable file that is there is accepted under its policy and held in its slot whenever NGX starts.
             static constexpr auto HeldLoadableFiles = [] [[nodiscard]] (const Console& console, const real::LoadableFiles& files, bool wanted,
                                                                         bool allowModifiedDlssnr) noexcept -> Result<real::HeldFiles, Error> {
                 return std::ranges::fold_left(

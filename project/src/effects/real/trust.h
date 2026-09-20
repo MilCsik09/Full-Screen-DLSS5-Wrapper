@@ -16,8 +16,8 @@ struct HeldFile
     ProductName product; // what the file calls its product, or nothing when it says: read once the file is held, so it is this file's
 };
 
-// Which of NVIDIA's files is being checked, which is what a refusal names: the two models, the driver's
-// optical flow library, and the NGX runtime when a copy sits beside the program.
+// Which NVIDIA-related file is being handled. Verified paths use this to name a refusal; the explicit
+// modified-neural-model path is restricted to NeuralRendering by its dedicated function.
 enum class ModelKind : std::uint8_t { NeuralRendering, SuperResolution, OpticalFlow, Runtime };
 
 // Verifies every Authenticode signature the file carries, the first and each one after it, and fails
