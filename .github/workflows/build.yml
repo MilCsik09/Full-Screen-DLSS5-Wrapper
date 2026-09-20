@@ -18,7 +18,7 @@ on:
       ref:
         description: Branch, tag or commit of this repository to build
         required: true
-        default: claude/dlss5-screen-ai-rules
+        default: main
         type: string
       configuration:
         description: Build configuration
@@ -107,6 +107,7 @@ jobs:
           Get-ChildItem env: | Where-Object { $before[$_.Name] -ne $_.Value } | ForEach-Object { "$($_.Name)=$($_.Value)" >> $env:GITHUB_ENV }
 
       - name: Set up the compiler cache
+        id: sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Configure
@@ -118,7 +119,7 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Compiler cache statistics
-        if: always()
+        if: always() && steps.sccache.outcome != 'skipped'
         shell: pwsh
         run: sccache --show-stats
 
