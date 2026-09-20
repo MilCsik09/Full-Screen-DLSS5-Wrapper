@@ -192,6 +192,13 @@ constexpr std::array<std::pair<std::wstring_view, bool>, 8> kSpellings{
     return parsed.has_value() && parsed->vsync == expected;
 }
 
+[[nodiscard]] bool ModifiedDlssnrRequiresOptIn(infra::RngState&) noexcept
+{
+    const std::array<std::wstring_view, 1> on{ L"--allow-modified-dlssnr=on" };
+    const auto parsed = ParseOptions(on);
+    return parsed.has_value() && parsed->allowModifiedDlssnr && !DefaultOptions().allowModifiedDlssnr;
+}
+
 [[nodiscard]] bool HexAppIdRoundTrips(infra::RngState& rng) noexcept
 {
     const std::uint64_t id = 1 + proptest::Draw(rng) % 0xFFFFFFFFull;
@@ -219,7 +226,7 @@ constexpr std::array<std::pair<std::wstring_view, bool>, 8> kSpellings{
 [[nodiscard]] bool DefaultCaptureMatchesTheDocumentation(const Options& d) noexcept
 {
     return d.source.kind == MonitorSelectionKind::Primary && !d.target.has_value() && d.cursor == CursorMode::Auto && !d.vsync && d.compare == CompareMode::Off && d.format == ColorFormat::Rgba8 &&
-           !d.captureBorder && d.ngxLogLevel == NgxLogLevel::Off && !d.ngxAppId.has_value() && d.ngxPath.IsEmpty() && d.appDataPath.IsEmpty();
+           !d.captureBorder && d.ngxLogLevel == NgxLogLevel::Off && !d.ngxAppId.has_value() && d.ngxPath.IsEmpty() && !d.allowModifiedDlssnr && d.appDataPath.IsEmpty();
 }
 
 [[nodiscard]] bool DefaultWindowMatchesTheDocumentation(const Options& d) noexcept
@@ -252,6 +259,7 @@ std::uint32_t OptionsSuite(std::uint64_t seed) noexcept
     failures += Failures(proptest::ForAll("the argument count is bounded exactly", seed, 1, ArgumentCountIsBoundedExactly));
     failures += Failures(proptest::ForAll("boolean spellings parse", seed, 40, BooleanSpellingsParse));
     failures += Failures(proptest::ForAll("--ngx-app-id round-trips", seed, 200, HexAppIdRoundTrips));
+    failures += Failures(proptest::ForAll("modified DLSSNR requires explicit opt-in", seed, 1, ModifiedDlssnrRequiresOptIn));
     failures += Failures(proptest::ForAll("option parser never panics on random input", seed, 3000, ParserNeverPanicsAndErrorsAreEnumerated));
     failures += Failures(proptest::ForAll("empty arguments give the defaults", seed, 1, EmptyArgumentsGiveDefaults));
     failures += Failures(proptest::ForAll("--monitor N round-trips", seed, 200, MonitorIndexRoundTrips));

@@ -105,10 +105,10 @@ build artifact. Put it next to `FullScreenWrapperForDLSS5.exe` or point `--ngx-p
 holds it. `nvngx_dlss.dll` (super resolution, feature 1) is NVIDIA's too, and is optional: without it the
 session runs without super resolution, and the panel says so beside a warning glyph.
 
-Because the NGX loader picks these files up by name from a folder anyone can write to, this tool checks
-every copy of them it finds in either folder before the loader gets there, whenever NGX is started at all and whether or not the session will use that model: Windows must accept every Authenticode signature the file carries (a driver file often carries NVIDIA's and Microsoft's), and one of the signers
-must be NVIDIA Corporation by name, with a chain that is clean when built again from Microsoft's own trusted root list and the certificates the signature carries alone, so a root anyone added to the ordinary Windows stores does not count. A root on that list which the machine does not hold yet is fetched by Windows during the check, so the check reaches the network only the first time it meets a root. A file that fails either stops the session before NGX is so much as initialised. One that passes is then asked what its version resource calls its product:
-`nvngx_dlssnr.dll` is expected to say `NVIDIA DLSSNR`, and one that says something else is used anyway, under a warning in the log and a glyph beside the model's switch on the panel, since it may be some other file of NVIDIA's under the model's name, or a later model. Each is then held open, shared for reading only,
+Because the NGX loader picks these files up by name from a folder anyone can write to, this tool normally checks
+every copy of them it finds in either folder before the loader gets there, whenever NGX is started at all and whether or not the session will use that model. The explicit `--allow-modified-dlssnr on` compatibility mode skips Authenticode verification only for `nvngx_dlssnr.dll`; all other local NVIDIA DLLs keep the checks below. In the normal mode, Windows must accept every Authenticode signature the file carries (a driver file often carries NVIDIA's and Microsoft's), and one of the signers
+must be NVIDIA Corporation by name, with a chain that is clean when built again from Microsoft's own trusted root list and the certificates the signature carries alone, so a root anyone added to the ordinary Windows stores does not count. A root on that list which the machine does not hold yet is fetched by Windows during the check, so the check reaches the network only the first time it meets a root. A file that fails the applicable policy stops the session before NGX is so much as initialised. An accepted file is then asked what its version resource calls its product:
+`nvngx_dlssnr.dll` is expected to say `NVIDIA DLSSNR`, and one that says something else is used anyway under a warning. In compatibility mode, the log also states explicitly that the neural model was loaded without NVIDIA signature verification. Each is then held open, shared for reading only,
 for as long as the session runs, so it cannot be written to, deleted or renamed afterwards — the file that
 was checked is the file that loads. A model that is not in one of those folders is not checked: super
 resolution may still run from the driver's own copy, which lives where Windows, not this tool, guards it. This does not defend against a machine that was already compromised
@@ -140,8 +140,8 @@ cannot stand in for one:
   `NotImplemented` to the requirements query and cannot build the feature, and this tool stops at
   start-up with a message naming the installed and the required driver.
 - The [NVIDIA DLSS SDK](https://github.com/NVIDIA/DLSS) (`lib/Windows_x86_64/x64/nvsdk_ngx_s.lib`, `include/`, `lib/Windows_x86_64/rel/nvngx_dlss.dll`).
-- NVIDIA's DLSS 5 model, `nvngx_dlssnr.dll`, next to `FullScreenWrapperForDLSS5.exe` or in the folder given by
-  `--ngx-path`. NGX looks for feature DLLs in the application folder and the listed paths, the way
+- A DLSS 5 neural model, `nvngx_dlssnr.dll`, next to `FullScreenWrapperForDLSS5.exe` or in the folder given by
+  `--ngx-path`. The default path requires NVIDIA's signed model. Experimental RTX 40 compatibility may use a compatible modified model only when `--allow-modified-dlssnr on` is explicitly supplied. NGX looks for feature DLLs in the application folder and the listed paths, the way
   games ship `nvngx_dlss.dll`; the driver does not install this one and this tool does not ship it.
   Without it the loader reports `DLSSNR.Available = 0` and this tool stops with a message saying the file
   is missing, where it looked, and that the file has to be found elsewhere, since it cannot be shipped here.

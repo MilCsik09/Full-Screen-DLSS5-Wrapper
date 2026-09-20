@@ -2818,9 +2818,10 @@ interior::CommandLine RestartCommandLine(const ControlPanel& panel, const interi
             return Trimmed(infra::Formatted<kPieceCapacity>("--ngx-app-id={:x}", id->Get()).Get());
         };
         constexpr std::array<const char*, 3> ngxLog{ "0", "1", "2" };
-        const std::array<Piece, 6> pieces{ Trimmed(infra::Formatted<kPieceCapacity>("--ngx-log={}", ngxLog[static_cast<std::size_t>(o.ngxLogLevel)]).Get()),
+        const std::array<Piece, 7> pieces{ Trimmed(infra::Formatted<kPieceCapacity>("--ngx-log={}", ngxLog[static_cast<std::size_t>(o.ngxLogLevel)]).Get()),
                                            Trimmed(infra::Formatted<kPieceCapacity>("--ngx-project-id={}", o.ngxProjectId.Get()).Get()),
                                            AppIdPiece(o.ngxAppId),
+                                           Trimmed(infra::Formatted<kPieceCapacity>("--allow-modified-dlssnr={}", Word(o.allowModifiedDlssnr)).Get()),
                                            Trimmed(infra::Formatted<kPieceCapacity>("--show-inert={}", Word(o.showInert)).Get()),
                                            Trimmed(infra::Formatted<kPieceCapacity>("--exclude-own-windows={}", Word(o.excludeOwnWindows)).Get()),
                                            Trimmed(infra::Formatted<kPieceCapacity>("--exclusion-log={}", Word(o.exclusionLog)).Get()) };

@@ -49,9 +49,10 @@ constexpr std::size_t kLoadableCount = 8;
 using LoadableFiles = std::array<std::optional<interior::FilePath>, kLoadableCount>;
 [[nodiscard]] LoadableFiles LoadableFilesOf(const NgxSettings& settings) noexcept;
 
-// The same slots once checked: each file open, shared for reading only, so the file that was checked stays
-// the file the loader has, for as long as whoever holds them lives, which is the session's environment.
-using HeldFiles = std::array<std::optional<TrustedFile>, kLoadableCount>;
+// The same slots once accepted: each file stays open, shared for reading only, so the file selected before
+// NGX starts is the file the loader has. Compatibility mode may deliberately accept only the neural model
+// without signature verification; every other locally supplied NVIDIA DLL remains verified.
+using HeldFiles = std::array<std::optional<HeldFile>, kLoadableCount>;
 
 // The driver keeps the path pointers, so an NgxPaths lives on the heap and never moves.
 class NgxPaths final

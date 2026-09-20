@@ -51,6 +51,7 @@ enum class OptionId : std::uint8_t {
     Format,
     CaptureBorder,
     NgxPath,
+    AllowModifiedDlssnr,
     NgxAppId,
     NgxProjectId,
     NgxLog,
@@ -102,7 +103,7 @@ struct OptionSpec
     ValueKind kind;
 };
 
-constexpr std::array<OptionSpec, 51> kSpecs{ {
+constexpr std::array<OptionSpec, 52> kSpecs{ {
     { L"help", OptionId::Help, ValueKind::Flag },
     { L"list-monitors", OptionId::ListMonitors, ValueKind::Flag },
     { L"monitor", OptionId::Monitor, ValueKind::MonitorSel },
@@ -135,6 +136,7 @@ constexpr std::array<OptionSpec, 51> kSpecs{ {
     { L"format", OptionId::Format, ValueKind::Format },
     { L"capture-border", OptionId::CaptureBorder, ValueKind::Bool },
     { L"ngx-path", OptionId::NgxPath, ValueKind::Path },
+    { L"allow-modified-dlssnr", OptionId::AllowModifiedDlssnr, ValueKind::Bool },
     { L"ngx-app-id", OptionId::NgxAppId, ValueKind::Hex },
     { L"ngx-project-id", OptionId::NgxProjectId, ValueKind::Text },
     { L"ngx-log", OptionId::NgxLog, ValueKind::NgxLog },
@@ -381,6 +383,7 @@ Options DefaultOptions() noexcept
         ColorFormat::Rgba8,
         false,
         DirectoryPath{},
+        false,
         std::nullopt,
         *kDefaultProjectId,
         NgxLogLevel::Off,
@@ -526,6 +529,7 @@ Result<Options, OptionsError> ParseOptions(std::span<const std::wstring_view> ar
                 ValueOr(list, OptionId::Format, d.format),
                 ValueOr(list, OptionId::CaptureBorder, d.captureBorder),
                 ValueOr(list, OptionId::NgxPath, d.ngxPath),
+                ValueOr(list, OptionId::AllowModifiedDlssnr, d.allowModifiedDlssnr),
                 appId,
                 projectId,
                 ValueOr(list, OptionId::NgxLog, d.ngxLogLevel),

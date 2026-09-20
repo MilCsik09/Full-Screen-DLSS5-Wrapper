@@ -37,7 +37,7 @@ struct Registration
 
 struct Loaded
 {
-    TrustedFile file;
+    HeldFile file;
     UniqueModule library;
     NV_OF_D3D12_API_FUNCTION_LIST api;
 };
@@ -94,7 +94,7 @@ Result<OpticalFlow, Error> CreateOpticalFlow(const GpuDevice& gpu, const interio
             return CheckFlow(create(NV_OF_API_VERSION, &api), ApiCall::OpticalFlowCreate).transform([&api] { return api; });
         };
         return LibraryPath().and_then([](const interior::FilePath& path) {
-            return OpenTrusted(path, ModelKind::OpticalFlow).and_then([&path](TrustedFile file) {
+            return OpenTrusted(path, ModelKind::OpticalFlow).and_then([&path](HeldFile file) {
                 return LoadedLibrary(path).and_then([&file](UniqueModule library) {
                     return EntryPoint(library.get()).and_then(ApiOf).transform([&file, &library](const NV_OF_D3D12_API_FUNCTION_LIST& api) {
                         return Loaded{ std::move(file), std::move(library), api };
