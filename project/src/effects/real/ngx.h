@@ -29,6 +29,7 @@ struct NgxSettings
     interior::DirectoryPath dataPath;
     interior::DirectoryPath executableDirectory;
     interior::DirectoryPath featurePath;
+    bool allowModifiedDlssnr;
     interior::NgxLogLevel logLevel;
     bool indicator;
     bool cubinCache;
@@ -78,8 +79,11 @@ struct ParameterDestroyer
     void operator()(NVSDK_NGX_Parameter* parameters) const noexcept;
 };
 
+class DirectNeuralRuntime;
+
 struct FeatureReleaser
 {
+    std::shared_ptr<DirectNeuralRuntime> direct;
     void operator()(NVSDK_NGX_Handle* handle) const noexcept;
 };
 
@@ -93,6 +97,7 @@ struct NgxRuntime
     Com<ID3D12Device> device;
     NgxSession session;
     NgxParameters parameters;
+    std::shared_ptr<DirectNeuralRuntime> direct;
 };
 
 struct Requirement
@@ -132,6 +137,7 @@ using BoundNrParameters = infra::BoundedVector<BoundNrParameter, interior::NrPar
 // cannot have it runs without it rather than stopping.
 [[nodiscard]] bool OffersSuperResolution(const NgxRuntime& runtime) noexcept;
 [[nodiscard]] std::optional<std::uint32_t> NeuralRenderingAvailability(const NgxRuntime& runtime) noexcept;
+[[nodiscard]] bool UsesDirectNeuralRendering(const NgxRuntime& runtime) noexcept;
 // How many sets of weights the model says it carries, or nothing when it will not say. Nothing means the
 // panel leaves the choice out rather than offering numbers that fall back to the one preset that exists.
 [[nodiscard]] std::optional<std::uint32_t> NeuralRenderingPresetCount(const NgxRuntime& runtime) noexcept;

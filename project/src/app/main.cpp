@@ -358,7 +358,7 @@ struct Ended
             static constexpr auto DataPathOf = [] [[nodiscard]] (const Options& o, const interior::DirectoryPath& executableDirectory) noexcept -> interior::DirectoryPath {
                 return o.appDataPath.IsEmpty() ? executableDirectory : o.appDataPath;
             };
-            return real::NgxSettings{ o.ngxAppId, o.ngxProjectId, DataPathOf(o, executableDirectory), executableDirectory, o.ngxPath, o.ngxLogLevel, o.indicator, o.cubinCache };
+            return real::NgxSettings{ o.ngxAppId, o.ngxProjectId, DataPathOf(o, executableDirectory), executableDirectory, o.ngxPath, o.allowModifiedDlssnr, o.ngxLogLevel, o.indicator, o.cubinCache };
         };
 
         static constexpr auto DriverText = [] [[nodiscard]] (const real::GpuDevice& device) noexcept -> Line {
@@ -456,6 +456,8 @@ struct Ended
                     };
                     if (!neuralRendering)
                         return {};
+                    if (real::UsesDirectNeuralRendering(runtime))
+                        return Log(console, LogLevel::Warn, "DLSS 5 Neural Rendering is using the direct RTX compatibility path; the driver's DLSSNR.Available value is bypassed for feature 18");
                     return CheckNeuralRendering(console, device, settings, real::NeuralRenderingAvailability(runtime));
                 };
                 if (!wanted)
