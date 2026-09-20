@@ -147,18 +147,18 @@ struct Translation
     return NamedProduct(block, *translation);
 }
 
+[[nodiscard]] Result<UniqueHandle, Error> OpenForReading(const interior::FilePath& path, ModelKind kind) noexcept
+{
+    void* handle = ::CreateFileW(path.CString(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return Fail(LastError(RefusalsOf(kind).open));
+    return UniqueHandle(handle);
+}
+
 } // namespace
 
-Result<TrustedFile, Error> OpenTrusted(const interior::FilePath& path, ModelKind kind) noexcept
+Result<HeldFile, Error> OpenTrusted(const interior::FilePath& path, ModelKind kind) noexcept
 {
-    // Shared for reading only, so nothing else may write to the file, delete it or rename it while it is held.
-    static constexpr auto OpenForReading = [] [[nodiscard]] (const wchar_t* path, ModelKind kind) noexcept -> Result<UniqueHandle, Error> {
-        void* handle = ::CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (handle == INVALID_HANDLE_VALUE)
-            return Fail(LastError(RefusalsOf(kind).open));
-        return UniqueHandle(handle);
-    };
-
     // Every signature the file carries is verified, the first and each after it, one call each; the first
     // call also counts the rest. The file passes when each is trusted and one of them is NVIDIA's.
     static constexpr auto Verified = [] [[nodiscard]] (const wchar_t* path, void* handle, ModelKind kind) noexcept -> Status<Error> {
@@ -335,9 +335,14 @@ Result<TrustedFile, Error> OpenTrusted(const interior::FilePath& path, ModelKind
         return Checked(&file, 0, WSS_VERIFY_SPECIFIC | WSS_GET_SECONDARY_SIG_COUNT, kind).and_then([&file, kind](const Signature& first) { return Rest(&file, first, kind); });
     };
     // The product name is read only of a file that has passed, and says nothing about whether it passed.
-    return OpenForReading(path.CString(), kind).and_then([&path, kind](UniqueHandle handle) {
-        return Verified(path.CString(), handle.get(), kind).transform([&path, &handle] { return TrustedFile{ std::move(handle), ProductNameOf(path.CString()) }; });
+    return OpenForReading(path, kind).and_then([&path, kind](UniqueHandle handle) {
+        return Verified(path.CString(), handle.get(), kind).transform([&path, &handle] { return HeldFile{ std::move(handle), ProductNameOf(path.CString()) }; });
     });
+}
+
+Result<HeldFile, Error> OpenModifiedNeuralModel(const interior::FilePath& path) noexcept
+{
+    return OpenForReading(path, ModelKind::NeuralRendering).transform([&path](UniqueHandle handle) { return HeldFile{ std::move(handle), ProductNameOf(path.CString()) }; });
 }
 
 Status<Error> PreferSystemLibraries() noexcept

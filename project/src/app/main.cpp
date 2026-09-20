@@ -174,7 +174,7 @@ struct Devices
 // loader takes first, or else the one under --ngx-path. With no file of ours in play there is nothing to doubt.
 [[nodiscard]] bool ModelAsNamed(const Devices& d) noexcept
 {
-    const std::optional<real::TrustedFile>& model = d.held[kModelBeside].has_value() ? d.held[kModelBeside] : d.held[kModelInPath];
+    const std::optional<real::HeldFile>& model = d.held[kModelBeside].has_value() ? d.held[kModelBeside] : d.held[kModelInPath];
     return !model.has_value() || model->product.Get() == real::kNeuralRenderingProduct;
 }
 
@@ -469,41 +469,57 @@ struct Ended
             // is checked and then held open for the life of the session, whether or not the session will use it: the
             // loader may open it all the same. A missing file is left to the loader, which says so better: neural
             // rendering stops without one, and super resolution has the driver's own copy.
-            static constexpr auto TrustedModel = [] [[nodiscard]] (const Console& console, const std::optional<interior::FilePath>& file, real::ModelKind kind,
-                                                                   std::string_view name) noexcept -> Result<std::optional<real::TrustedFile>, Error> {
-                // Only the DLSS 5 model's product name is judged; the super resolution file's is only said.
+            static constexpr auto HeldModel = [] [[nodiscard]] (const Console& console, const std::optional<interior::FilePath>& file, real::ModelKind kind,
+                                                                std::string_view name, bool allowModifiedDlssnr) noexcept -> Result<std::optional<real::HeldFile>, Error> {
+                static constexpr auto IsModifiedNeuralModel = [] [[nodiscard]] (real::ModelKind kind, bool allowed) noexcept -> bool {
+                    return allowed && kind == real::ModelKind::NeuralRendering;
+                };
+
                 static constexpr auto ProductOf = [] [[nodiscard]] (real::ModelKind kind) noexcept -> std::optional<std::wstring_view> {
                     if (kind != real::ModelKind::NeuralRendering)
                         return std::nullopt;
                     return real::kNeuralRenderingProduct;
                 };
 
-                // A file that passed the signature check is used whatever it calls itself; what it calls itself is said,
-                // and said as a warning when it is not what was expected, since it may then be some other file of NVIDIA's.
-                static constexpr auto Reported = [] [[nodiscard]] (const Console& console, const real::TrustedFile& model, std::string_view name,
-                                                                   std::optional<std::wstring_view> product) noexcept -> Status<Error> {
-                    static constexpr auto Warned = [] [[nodiscard]] (const Console& console, std::string_view name, const char* called, std::wstring_view wanted) noexcept -> Status<Error> {
-                        const std::array<char, real::ProductName::Capacity + 1> expected = infra::NarrowedChars<real::ProductName::Capacity + 1>(wanted);
-                        return Log(console, LogLevel::Warn,
-                                   infra::Formatted<kLineCapacity>("{} is signed by NVIDIA but calls its product '{}' rather than '{}', so it may not be the DLSS 5 model; it is used anyway", name,
-                                                                   called, expected.data())
-                                       .Get());
-                    };
-                    const std::array<char, real::ProductName::Capacity + 1> called = infra::NarrowedChars<real::ProductName::Capacity + 1>(model.product.Get());
-                    if (product.has_value() && model.product.Get() != *product)
-                        return Warned(console, name, called.data(), *product);
-                    return Log(console, LogLevel::Info, infra::Formatted<kLineCapacity>("{} is signed by NVIDIA and calls its product '{}'", name, called.data()).Get());
+                static constexpr auto Opened = [] [[nodiscard]] (const interior::FilePath& file, real::ModelKind kind, bool modified) noexcept -> Result<real::HeldFile, Error> {
+                    if (modified)
+                        return real::OpenModifiedNeuralModel(file);
+                    return real::OpenTrusted(file, kind);
                 };
 
-                static constexpr auto Checked = [] [[nodiscard]] (const Console& console, const interior::FilePath& file, real::ModelKind kind,
-                                                                  std::string_view name) noexcept -> Result<std::optional<real::TrustedFile>, Error> {
-                    return real::OpenTrusted(file, kind).and_then([&console, kind, name](real::TrustedFile model) {
-                        return Reported(console, model, name, ProductOf(kind)).transform([&model] { return std::optional<real::TrustedFile>{ std::move(model) }; });
-                    });
+                static constexpr auto Reported = [] [[nodiscard]] (const Console& console, const real::HeldFile& model, std::string_view name,
+                                                                   std::optional<std::wstring_view> product, bool modified) noexcept -> Status<Error> {
+                    static constexpr auto ReportTrust = [] [[nodiscard]] (const Console& console, std::string_view name, bool modified) noexcept -> Status<Error> {
+                        if (modified)
+                            return Log(console, LogLevel::Warn,
+                                       infra::Formatted<kLineCapacity>("{} is being loaded without NVIDIA signature verification because --allow-modified-dlssnr is on", name).Get());
+                        return Log(console, LogLevel::Info, infra::Formatted<kLineCapacity>("{} passed NVIDIA signature verification", name).Get());
+                    };
+
+                    static constexpr auto ReportProduct = [] [[nodiscard]] (const Console& console, const real::HeldFile& model, std::string_view name,
+                                                                           std::optional<std::wstring_view> product) noexcept -> Status<Error> {
+                        static constexpr auto ReportExpectedProduct = [] [[nodiscard]] (const Console& console, const real::HeldFile& model, std::string_view name,
+                                                                                       std::wstring_view product) noexcept -> Status<Error> {
+                            const std::array<char, real::ProductName::Capacity + 1> called = infra::NarrowedChars<real::ProductName::Capacity + 1>(model.product.Get());
+                            if (model.product.Get() == product)
+                                return Log(console, LogLevel::Info, infra::Formatted<kLineCapacity>("{} calls its product '{}'", name, called.data()).Get());
+                            const std::array<char, real::ProductName::Capacity + 1> expected = infra::NarrowedChars<real::ProductName::Capacity + 1>(product);
+                            return Log(console, LogLevel::Warn,
+                                       infra::Formatted<kLineCapacity>("{} calls its product '{}' rather than '{}'; the selected file is still used", name, called.data(), expected.data()).Get());
+                        };
+                        if (!product.has_value())
+                            return {};
+                        return ReportExpectedProduct(console, model, name, *product);
+                    };
+                    return ReportTrust(console, name, modified).and_then([&] { return ReportProduct(console, model, name, product); });
                 };
+
                 if (!file.has_value())
-                    return std::optional<real::TrustedFile>{};
-                return Checked(console, *file, kind, name);
+                    return std::optional<real::HeldFile>{};
+                const bool modified = IsModifiedNeuralModel(kind, allowModifiedDlssnr);
+                return Opened(*file, kind, modified).and_then([&](real::HeldFile model) {
+                    return Reported(console, model, name, ProductOf(kind), modified).transform([&model] { return std::optional<real::HeldFile>{ std::move(model) }; });
+                });
             };
 
             static constexpr auto ModelToCheck = [] [[nodiscard]] (const std::optional<interior::FilePath>& found, bool wanted) noexcept -> std::optional<interior::FilePath> {
@@ -511,19 +527,22 @@ struct Ended
             };
 
             // Every loadable file that is there, checked in turn and held in its slot, whenever NGX is started at all.
-            static constexpr auto TrustedFiles = [] [[nodiscard]] (const Console& console, const real::LoadableFiles& files, bool wanted) noexcept -> Result<real::HeldFiles, Error> {
+            static constexpr auto HeldLoadableFiles = [] [[nodiscard]] (const Console& console, const real::LoadableFiles& files, bool wanted,
+                                                                        bool allowModifiedDlssnr) noexcept -> Result<real::HeldFiles, Error> {
                 return std::ranges::fold_left(
                     std::views::iota(std::size_t{ 0 }, real::kLoadableCount), Result<real::HeldFiles, Error>{ real::HeldFiles{} },
-                    [&console, &files, wanted](Result<real::HeldFiles, Error> held, std::size_t i) {
-                        return std::move(held).and_then([&console, &files, wanted, i](real::HeldFiles slots) {
-                            return TrustedModel(console, ModelToCheck(files[i], wanted), kLoadables[i].kind, kLoadables[i].name).transform([&slots, i](std::optional<real::TrustedFile> file) {
-                                slots[i] = std::move(file); // WAIVER(R2): each slot is filled once, in order, by the one file it is for.
-                                return std::move(slots);
-                            });
+                    [&console, &files, wanted, allowModifiedDlssnr](Result<real::HeldFiles, Error> held, std::size_t i) {
+                        return std::move(held).and_then([&console, &files, wanted, allowModifiedDlssnr, i](real::HeldFiles slots) {
+                            return HeldModel(console, ModelToCheck(files[i], wanted), kLoadables[i].kind, kLoadables[i].name, allowModifiedDlssnr)
+                                .transform([&slots, i](std::optional<real::HeldFile> file) {
+                                    slots[i] = std::move(file); // WAIVER(R2): each slot is filled once, in order, by the one file it is for.
+                                    return std::move(slots);
+                                });
                         });
                     });
             };
-            return TrustedFiles(console, real::LoadableFilesOf(settings), wantsNgx).and_then([&](real::HeldFiles held) {
+
+            return HeldLoadableFiles(console, real::LoadableFilesOf(settings), wantsNgx, b.options.allowModifiedDlssnr).and_then([&](real::HeldFiles held) {
                 return OptionalRuntime(console, device, b.options, settings, wantsNgx).transform([&](std::optional<real::NgxRuntime> runtime) {
                     return Devices{ std::move(device), std::move(runtime), std::move(held) };
                 });

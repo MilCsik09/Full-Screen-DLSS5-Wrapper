@@ -8,9 +8,9 @@ namespace real {
 // What a file's version resource calls its product, which is the one thing about a file its name does not say.
 using ProductName = infra::BoundedString<wchar_t, 64>;
 
-// A file Windows says is signed, held open so it stays the file that was checked: the handle is shared for
-// reading only, so nothing may write to it, delete it or rename it while the session holds it.
-struct TrustedFile
+// A loadable file held open so it stays the same file for the life of the session. Most callers require
+// NVIDIA signature verification; the explicit modified-neural-model path deliberately does not.
+struct HeldFile
 {
     UniqueHandle handle;
     ProductName product; // what the file calls its product, or nothing when it says: read once the file is held, so it is this file's
@@ -27,7 +27,11 @@ enum class ModelKind : std::uint8_t { NeuralRendering, SuperResolution, OpticalF
 // for the caller to judge. Revocation is not chased, which would mean a network call on a path that has to
 // work offline; a root on Microsoft's list that the machine does not hold yet is fetched for that chain,
 // which is the one call over the network this check can make, and it is bounded.
-[[nodiscard]] infra::Result<TrustedFile, Error> OpenTrusted(const interior::FilePath& path, ModelKind kind) noexcept;
+[[nodiscard]] infra::Result<HeldFile, Error> OpenTrusted(const interior::FilePath& path, ModelKind kind) noexcept;
+
+// Opens only the neural-rendering model without Authenticode verification. The caller must expose this as
+// an explicit opt-in compatibility mode; no other NVIDIA library may use this path.
+[[nodiscard]] infra::Result<HeldFile, Error> OpenModifiedNeuralModel(const interior::FilePath& path) noexcept;
 
 // Asks Windows, for every library the process loads by name from here on, its own and those loaded inside
 // the libraries it uses, to take the one in the system folder whenever one of that name is there, so a

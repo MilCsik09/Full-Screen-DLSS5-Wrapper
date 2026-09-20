@@ -36,7 +36,7 @@ Just a single `exe` (signed with a trusted certificate) written in C++ with zero
 - Designed to Minimize Anti-Cheat False-Positive Risk
   - Does NOT inject itself into or modify any other applications. It captures the final screen output using Windows' screen-capture APIs and processes that. (See [How It Works](https://github.com/ThioJoe/Full-Screen-DLSS5-Wrapper#how-it-works) explanation below)
     - This makes it architecturally more similar to screen-capture software or an external graphics-enhancement overlay.
-  - It's code signed, so any anti-cheat providers could see you are running the unmodified version of the tool, which independently verifies loaded Nvidia binary signatures.
+  - In the default mode, locally supplied NVIDIA binaries are signature-checked before NGX starts. The optional modified-DLSSNR compatibility mode deliberately relaxes this check only for `nvngx_dlssnr.dll`, so it does not provide the same provenance assurance.
   - Note: There's still never a guarantee. Some anti-cheats may block overlays in general. So still best to not use it in competitive games, or where third party overlays are prohibited. Check the game's rules.
 
 # Example Screenshots
@@ -76,9 +76,10 @@ Just a single `exe` (signed with a trusted certificate) written in C++ with zero
 
 # Requirements
 
-- You need a 50-Series Nvidia GPU and Nvidia drivers `616.64` or newer
+- Vanilla mode requires a 50-Series Nvidia GPU and Nvidia drivers `616.64` or newer.
+- Experimental RTX 40 compatibility mode requires driver `616.64` or newer, a compatible modified `nvngx_dlssnr.dll`, and `--allow-modified-dlssnr on`. This fork does not ship a modified model.
 - You must acquire `nvngx_dlssnr.dll` (available [here](https://web.archive.org/web/20260913005530/https://release-assets.githubusercontent.com/github-production-release-asset/1172082676/74962a93-ae18-48bf-a383-772583e7035e?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-09-13T01%3A42%3A57Z&rscd=attachment%3B+filename%3Dnvngx_dlssnr_310.8.0.zip&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-09-13T00%3A42%3A07Z&ske=2026-09-13T01%3A42%3A57Z&sks=b&skv=2018-11-09&sig=gti%2BBU6awa3LBMcrIxECIGL%2FnwBAcWqSc6E5BUP5Qrs%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc4OTI2NDUyOSwibmJmIjoxNzg5MjYwOTI5LCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.ljXg2tJDwLH4YMacu6QaOC3ef-QsXzFbEsx3l04Czes&response-content-disposition=attachment%3B%20filename%3Dnvngx_dlssnr_310.8.0.zip&response-content-type=application%2Foctet-stream)) and put it next to the app `exe`.
-  - If that link stops working, you'll need to find it find it yourself through google or something. The app will verify the dll's signature to ensure it's the right file either way.
+  - In vanilla mode the app verifies the DLL's NVIDIA signature. With `--allow-modified-dlssnr on`, only this neural-model DLL is accepted without signature verification; use only a file whose source you trust.
 
 ### Optional:
 - `nvngx_dlss.dll` - Enables use of super resolution options. Also put that next to the `exe`.

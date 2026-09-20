@@ -84,6 +84,7 @@ struct Options
     ColorFormat format;
     bool captureBorder;
     DirectoryPath ngxPath;
+    bool allowModifiedDlssnr;
     std::optional<NgxAppId> ngxAppId;
     ProjectIdText ngxProjectId;
     NgxLogLevel ngxLogLevel;
