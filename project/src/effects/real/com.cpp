@@ -82,6 +82,10 @@ std::string_view Describe(ApiCall call) noexcept
     case ApiCall::NgxGetCapabilityParameters: return "NVSDK_NGX_D3D12_GetCapabilityParameters";
     case ApiCall::NgxCreateFeature: return "NVSDK_NGX_D3D12_CreateFeature";
     case ApiCall::NgxEvaluateFeature: return "NVSDK_NGX_D3D12_EvaluateFeature";
+    case ApiCall::LoadNeuralForwarder: return "loading nvngx.dll_dlssnr.dll for RTX compatibility";
+    case ApiCall::NeuralForwarderEntryPoint: return "nvngx.dll_dlssnr.dll is missing a required entry point";
+    case ApiCall::OpenDirectNeuralModel: return "loading nvngx_dlssnr.dll through the RTX compatibility forwarder";
+    case ApiCall::NeuralDirectInit: return "initializing nvngx_dlssnr.dll through the RTX compatibility forwarder";
     case ApiCall::NgxOptimalSettings: return "NGX_DLSS_GET_OPTIMAL_SETTINGS";
     case ApiCall::NgxParameterRoundTrip: return "an NGX parameter did not read back the value written";
     case ApiCall::WindowNotFound: return "no visible window has --window in its title";

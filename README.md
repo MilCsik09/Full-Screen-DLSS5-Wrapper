@@ -86,7 +86,7 @@ Just a single `exe` (signed with a trusted certificate) written in C++ with zero
 
 ### RTX 40 compatibility mode
 
-This fork allows a modified `nvngx_dlssnr.dll` by default so an RTX 40 setup can be launched by double-clicking `FullScreenWrapperForDLSS5.exe`.
+This fork allows a modified `nvngx_dlssnr.dll` by default so an RTX 40 setup can be launched by double-clicking `FullScreenWrapperForDLSS5.exe`. The build artifact also includes `nvngx.dll_dlssnr.dll`, a small compatibility forwarder that calls the neural model directly when the driver's secure NGX loader refuses the modified model.
 
 To force the original strict behavior instead:
 
@@ -94,9 +94,17 @@ To force the original strict behavior instead:
 FullScreenWrapperForDLSS5.exe --allow-modified-dlssnr off
 ```
 
-Driver `616.64` or newer is still required because the wrapper continues to use the driver's NGX feature-18 support. The switch does **not** bypass the driver capability checks and does not permit modified NGX, DLSS Super Resolution, or optical-flow runtime DLLs. It only relaxes Authenticode verification for `nvngx_dlssnr.dll`.
+Driver `616.64` or newer remains the supported baseline. In compatibility mode the driver NGX core still supplies the parameter block, but feature 18 create/evaluate/release are routed directly through `nvngx.dll_dlssnr.dll` when `DLSSNR.Available` is zero. DLSS Super Resolution and optical-flow runtime handling are unchanged.
 
 The modified model is third-party code executed inside this process. This repository does not ship one, and the wrapper cannot establish its provenance when this mode is enabled.
+
+For RTX 40 compatibility, keep these files together:
+
+```
+FullScreenWrapperForDLSS5.exe
+nvngx.dll_dlssnr.dll
+nvngx_dlssnr.dll
+```
 
 ------
 

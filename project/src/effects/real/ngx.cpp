@@ -6,8 +6,76 @@
 
 #include <algorithm>
 #include <string_view>
+#include <type_traits>
 
 namespace real {
+
+using ForwarderOpen = DWORD(__cdecl*)(const wchar_t*, void**);
+using ForwarderInit = NVSDK_NGX_Result(NVSDK_CONV*)(void*, const wchar_t*, ID3D12Device*, const NVSDK_NGX_Parameter*);
+using ForwarderCreate = NVSDK_NGX_Result(NVSDK_CONV*)(void*, ID3D12GraphicsCommandList*, const NVSDK_NGX_Parameter*, NVSDK_NGX_Handle**);
+using ForwarderEvaluate = NVSDK_NGX_Result(NVSDK_CONV*)(void*, ID3D12GraphicsCommandList*, const NVSDK_NGX_Handle*, const NVSDK_NGX_Parameter*);
+using ForwarderRelease = NVSDK_NGX_Result(NVSDK_CONV*)(void*, NVSDK_NGX_Handle*);
+using ForwarderClose = NVSDK_NGX_Result(NVSDK_CONV*)(void*, ID3D12Device*);
+
+struct ForwarderModuleFreer
+{
+    void operator()(HMODULE module) const noexcept
+    {
+        ENSURE(::FreeLibrary(module) != FALSE);
+    }
+};
+using ForwarderModule = std::unique_ptr<std::remove_pointer_t<HMODULE>, ForwarderModuleFreer>;
+
+struct ForwarderApi
+{
+    ForwarderOpen open;
+    ForwarderInit init;
+    ForwarderCreate create;
+    ForwarderEvaluate evaluate;
+    ForwarderRelease release;
+    ForwarderClose close;
+};
+
+class DirectNeuralRuntime final
+{
+public:
+    DirectNeuralRuntime(ForwarderModule module, void* context, ForwarderApi api, Com<ID3D12Device> device) noexcept
+        : module_(std::move(module)), context_(context), api_(api), device_(std::move(device))
+    {
+    }
+
+    ~DirectNeuralRuntime() noexcept
+    {
+        ENSURE(!NVSDK_NGX_FAILED(api_.close(context_, device_.Get())));
+    }
+
+    DirectNeuralRuntime(const DirectNeuralRuntime&) = delete;
+    DirectNeuralRuntime& operator=(const DirectNeuralRuntime&) = delete;
+    DirectNeuralRuntime(DirectNeuralRuntime&&) = delete;
+    DirectNeuralRuntime& operator=(DirectNeuralRuntime&&) = delete;
+
+    [[nodiscard]] NVSDK_NGX_Result Create(ID3D12GraphicsCommandList* list, const NVSDK_NGX_Parameter* parameters, NVSDK_NGX_Handle** handle) const noexcept
+    {
+        return api_.create(context_, list, parameters, handle);
+    }
+
+    [[nodiscard]] NVSDK_NGX_Result Evaluate(ID3D12GraphicsCommandList* list, const NVSDK_NGX_Handle* handle, const NVSDK_NGX_Parameter* parameters) const noexcept
+    {
+        return api_.evaluate(context_, list, handle, parameters);
+    }
+
+    [[nodiscard]] NVSDK_NGX_Result Release(NVSDK_NGX_Handle* handle) const noexcept
+    {
+        return api_.release(context_, handle);
+    }
+
+private:
+    ForwarderModule module_;
+    void* context_;
+    ForwarderApi api_;
+    Com<ID3D12Device> device_;
+};
+
 namespace {
 
 using infra::Fail;
@@ -26,8 +94,10 @@ constexpr char kNeuralRenderingAvailable[] = "DLSSNR.Available";
 constexpr std::array<const char*, 2> kPresetCountNames{ "DLSSNR.PresetCount", "DLSSNR.Presets" };
 constexpr std::wstring_view kNeuralRenderingModel = L"\\nvngx_dlssnr.dll";
 constexpr std::wstring_view kSuperResolutionModel = L"\\nvngx_dlss.dll";
+constexpr std::wstring_view kNeuralForwarder = L"\\nvngx.dll_dlssnr.dll";
 constexpr std::array<std::wstring_view, 2> kRuntimeNames{ L"\\_nvngx.dll", L"\\nvngx.dll" };
-constexpr std::size_t kModelPathCapacity = interior::DirectoryPath::Capacity + std::max(kNeuralRenderingModel.size(), kSuperResolutionModel.size()) + 1;
+constexpr std::size_t kLongestLoadableName = std::max(std::max(kNeuralRenderingModel.size(), kSuperResolutionModel.size()), kNeuralForwarder.size());
+constexpr std::size_t kModelPathCapacity = interior::DirectoryPath::Capacity + kLongestLoadableName + 1;
 
 [[nodiscard]] std::array<wchar_t, kModelPathCapacity> ModelPathIn(std::wstring_view directory, std::wstring_view model) noexcept
 {
@@ -110,6 +180,72 @@ void NVSDK_CONV DiscardNgxLine(const char*, NVSDK_NGX_Logging_Level, NVSDK_NGX_F
         return std::nullopt;
     return value;
 }
+
+[[nodiscard]] Result<ForwarderModule, Error> LoadNeuralForwarder(const NgxSettings& settings) noexcept
+{
+    const std::array<wchar_t, kModelPathCapacity> path = ModelPathIn(settings.executableDirectory.Get(), kNeuralForwarder);
+    HMODULE raw = ::LoadLibraryExW(path.data(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (raw == nullptr)
+        return Fail(LastError(ApiCall::LoadNeuralForwarder));
+    return ForwarderModule(raw);
+}
+
+[[nodiscard]] Result<ForwarderApi, Error> ForwarderApiOf(HMODULE module) noexcept
+{
+    const ForwarderApi api{
+        reinterpret_cast<ForwarderOpen>(::GetProcAddress(module, "DscreenDlssnrOpen")),
+        reinterpret_cast<ForwarderInit>(::GetProcAddress(module, "DscreenDlssnrInit")),
+        reinterpret_cast<ForwarderCreate>(::GetProcAddress(module, "DscreenDlssnrCreate")),
+        reinterpret_cast<ForwarderEvaluate>(::GetProcAddress(module, "DscreenDlssnrEvaluate")),
+        reinterpret_cast<ForwarderRelease>(::GetProcAddress(module, "DscreenDlssnrRelease")),
+        reinterpret_cast<ForwarderClose>(::GetProcAddress(module, "DscreenDlssnrClose"))
+    };
+    if (api.open == nullptr || api.init == nullptr || api.create == nullptr || api.evaluate == nullptr || api.release == nullptr || api.close == nullptr)
+        return Fail(Error{ ApiCall::NeuralForwarderEntryPoint, ERROR_PROC_NOT_FOUND });
+    return api;
+}
+
+[[nodiscard]] Result<std::shared_ptr<DirectNeuralRuntime>, Error> CreateDirectNeuralRuntime(const GpuDevice& gpu, const NgxSettings& settings,
+                                                                                           NVSDK_NGX_Parameter* parameters) noexcept
+{
+    static constexpr auto OpenContext = [] [[nodiscard]] (const ForwarderApi& api, std::wstring_view directory) noexcept -> Result<void*, Error> {
+        const std::array<wchar_t, kModelPathCapacity> modelPath = ModelPathIn(directory, kNeuralRenderingModel);
+        void* context = nullptr;
+        const DWORD result = api.open(modelPath.data(), &context);
+        if (result != ERROR_SUCCESS || context == nullptr)
+            return Fail(Error{ ApiCall::OpenDirectNeuralModel, result });
+        return context;
+    };
+
+    static constexpr auto Initialized = [] [[nodiscard]] (ForwarderModule module, const ForwarderApi& api, void* context, const GpuDevice& gpu,
+                                                          const NgxSettings& settings, NVSDK_NGX_Parameter* parameters) noexcept
+        -> Result<std::shared_ptr<DirectNeuralRuntime>, Error> {
+        const NVSDK_NGX_Result result = api.init(context, settings.dataPath.CString(), gpu.device.Get(), parameters);
+        if (NVSDK_NGX_FAILED(result))
+        {
+            const NVSDK_NGX_Result closed = api.close(context, gpu.device.Get());
+            if (NVSDK_NGX_FAILED(closed))
+                return Fail(Error{ ApiCall::NgxShutdown, static_cast<std::uint32_t>(closed) });
+            return Fail(Error{ ApiCall::NeuralDirectInit, static_cast<std::uint32_t>(result) });
+        }
+        return std::make_shared<DirectNeuralRuntime>(std::move(module), context, api, gpu.device);
+    };
+
+    const std::optional<interior::DirectoryPath> model = ModelLocation(settings, kNeuralRenderingModel);
+    if (!model.has_value())
+        return Fail(Error{ ApiCall::NgxModelMissing, 0 });
+    return LoadNeuralForwarder(settings).and_then([&](ForwarderModule module) {
+        return ForwarderApiOf(module.get()).and_then([&](const ForwarderApi& api) {
+            return OpenContext(api, model->Get()).and_then([&](void* context) { return Initialized(std::move(module), api, context, gpu, settings, parameters); });
+        });
+    });
+}
+
+[[nodiscard]] bool NeedsDirectNeuralRuntime(const NgxSettings& settings, const NVSDK_NGX_Parameter* parameters) noexcept
+{
+    return settings.allowModifiedDlssnr && UIntOf(parameters, kNeuralRenderingAvailable).value_or(0) == 0 && ModelLocation(settings, kNeuralRenderingModel).has_value();
+}
+
 
 [[nodiscard]] bool IsSuperResolutionAvailable(const NVSDK_NGX_Parameter* p) noexcept
 {
@@ -197,14 +333,14 @@ struct OptimalSettings
                       value);
 }
 
-[[nodiscard]] Result<Feature, Error> Created(NVSDK_NGX_Handle* raw, NVSDK_NGX_Result result) noexcept
+[[nodiscard]] Result<Feature, Error> Created(NVSDK_NGX_Handle* raw, NVSDK_NGX_Result result, std::shared_ptr<DirectNeuralRuntime> direct) noexcept
 {
-    static constexpr auto OwnedFeature = [] [[nodiscard]] (NVSDK_NGX_Handle * raw) noexcept -> Result<Feature, Error> {
+    static constexpr auto OwnedFeature = [] [[nodiscard]] (NVSDK_NGX_Handle * raw, std::shared_ptr<DirectNeuralRuntime> direct) noexcept -> Result<Feature, Error> {
         if (raw == nullptr)
             return Fail(Error{ ApiCall::NgxCreateFeature, 0 });
-        return Feature(raw);
+        return Feature(raw, FeatureReleaser{ std::move(direct) });
     };
-    return CheckNgx(result, ApiCall::NgxCreateFeature).and_then([raw] { return OwnedFeature(raw); });
+    return CheckNgx(result, ApiCall::NgxCreateFeature).and_then([raw, direct = std::move(direct)]() mutable { return OwnedFeature(raw, std::move(direct)); });
 }
 
 [[nodiscard]] Result<BoundNrParameters, Error> BoundOrFull(const Result<interior::NrParameterList, infra::CapacityExceeded>& list, const ResourceTable& table) noexcept
@@ -242,7 +378,8 @@ void ParameterDestroyer::operator()(NVSDK_NGX_Parameter* parameters) const noexc
 
 void FeatureReleaser::operator()(NVSDK_NGX_Handle* handle) const noexcept
 {
-    ENSURE(!NVSDK_NGX_FAILED(NVSDK_NGX_D3D12_ReleaseFeature(handle)));
+    const NVSDK_NGX_Result result = direct ? direct->Release(handle) : NVSDK_NGX_D3D12_ReleaseFeature(handle);
+    ENSURE(!NVSDK_NGX_FAILED(result));
 }
 
 std::optional<interior::DirectoryPath> NeuralRenderingModelLocation(const NgxSettings& settings) noexcept
@@ -315,7 +452,9 @@ Result<NgxRuntime, Error> CreateNgxRuntime(const GpuDevice& gpu, const NgxSettin
             return CheckNgx(NVSDK_NGX_D3D12_GetCapabilityParameters(&raw), ApiCall::NgxGetCapabilityParameters).and_then([raw] { return OwnedParameters(raw); });
         };
         NgxSession session(gpu.device.Get());
-        return CapabilityParameters().transform([&](NgxParameters parameters) { return NgxRuntime{ paths, gpu.device, std::move(session), std::move(parameters) }; });
+        return CapabilityParameters().transform([&](NgxParameters parameters) {
+            return NgxRuntime{ paths, gpu.device, std::move(session), std::move(parameters), std::shared_ptr<DirectNeuralRuntime>{} };
+        });
     };
 
     // The model draws its own overlay, naming its version, the preset it resolved and the sizes it is
@@ -333,11 +472,19 @@ Result<NgxRuntime, Error> CreateNgxRuntime(const GpuDevice& gpu, const NgxSettin
             return {};
         return CheckBool(::SetEnvironmentVariableW(L"__NGX_CUBIN_DISABLE_RESOURCE_CACHE", L"1"), ApiCall::SetEnvironmentVariable);
     };
+    static constexpr auto WithDirectNeuralRuntime = [] [[nodiscard]] (const GpuDevice& gpu, const NgxSettings& settings, NgxRuntime runtime) noexcept -> Result<NgxRuntime, Error> {
+        if (!NeedsDirectNeuralRuntime(settings, runtime.parameters.get()))
+            return runtime;
+        return CreateDirectNeuralRuntime(gpu, settings, runtime.parameters.get()).transform([&](std::shared_ptr<DirectNeuralRuntime> direct) {
+            return NgxRuntime{ runtime.paths, runtime.device, std::move(runtime.session), std::move(runtime.parameters), std::move(direct) };
+        });
+    };
     const std::shared_ptr<const NgxPaths> paths = std::make_shared<const NgxPaths>(settings);
     return RequestIndicator(settings.indicator)
         .and_then([&] { return RequestKernelCache(settings.cubinCache); })
         .and_then([&] { return CheckNgx(Init(settings, gpu.device.Get(), paths->Common()), ApiCall::NgxInit); })
-        .and_then([&] { return Initialized(gpu, paths); });
+        .and_then([&] { return Initialized(gpu, paths); })
+        .and_then([&](NgxRuntime runtime) { return WithDirectNeuralRuntime(gpu, settings, std::move(runtime)); });
 }
 
 bool OffersSuperResolution(const NgxRuntime& runtime) noexcept
@@ -354,6 +501,11 @@ bool OffersSuperResolution(const NgxRuntime& runtime) noexcept
 std::optional<std::uint32_t> NeuralRenderingAvailability(const NgxRuntime& runtime) noexcept
 {
     return UIntOf(runtime.parameters.get(), kNeuralRenderingAvailable);
+}
+
+bool UsesDirectNeuralRendering(const NgxRuntime& runtime) noexcept
+{
+    return runtime.direct != nullptr;
 }
 
 std::optional<std::uint32_t> NeuralRenderingPresetCount(const NgxRuntime& runtime) noexcept
@@ -414,7 +566,10 @@ Result<Feature, Error> CreateSuperResolution(const NgxRuntime& runtime, ID3D12Gr
     };
     NVSDK_NGX_DLSS_Create_Params create = CreateParamsOf(choice);
     NVSDK_NGX_Handle* raw = nullptr;
-    return WritePresets(runtime.parameters.get(), choice.preset).and_then([&] { return Created(raw, NGX_D3D12_CREATE_DLSS_EXT(list, 1, 1, &raw, runtime.parameters.get(), &create)); });
+    return WritePresets(runtime.parameters.get(), choice.preset).and_then([&] {
+        const NVSDK_NGX_Result result = NGX_D3D12_CREATE_DLSS_EXT(list, 1, 1, &raw, runtime.parameters.get(), &create);
+        return Created(raw, result, std::shared_ptr<DirectNeuralRuntime>{});
+    });
 }
 
 Result<Feature, Error> CreateNeuralRendering(const NgxRuntime& runtime, ID3D12GraphicsCommandList* list, const interior::NrTuning& tuning, const interior::Extent& work) noexcept
@@ -422,7 +577,11 @@ Result<Feature, Error> CreateNeuralRendering(const NgxRuntime& runtime, ID3D12Gr
     NVSDK_NGX_Handle* raw = nullptr;
     return BoundOrFull(interior::NrCreationParameters(tuning, work), ResourceTable{})
         .and_then([&](const BoundNrParameters& parameters) { return WriteAll(runtime.parameters.get(), parameters); })
-        .and_then([&] { return Created(raw, NVSDK_NGX_D3D12_CreateFeature(list, kNeuralRenderingFeature, runtime.parameters.get(), &raw)); });
+        .and_then([&] {
+            const NVSDK_NGX_Result result = runtime.direct ? runtime.direct->Create(list, runtime.parameters.get(), &raw)
+                                                           : NVSDK_NGX_D3D12_CreateFeature(list, kNeuralRenderingFeature, runtime.parameters.get(), &raw);
+            return Created(raw, result, runtime.direct);
+        });
 }
 
 Status<Error> EvaluateSuperResolution(const NgxRuntime& runtime, const Feature& feature, ID3D12GraphicsCommandList* list, const SrInputs& inputs) noexcept
@@ -456,7 +615,11 @@ Status<Error> EvaluateNeuralRendering(const NgxRuntime& runtime, const Feature& 
 {
     return BoundOrFull(interior::NrEvaluationParameters(tuning, evaluate), resources)
         .and_then([&](const BoundNrParameters& parameters) { return WriteAll(runtime.parameters.get(), parameters); })
-        .and_then([&] { return CheckNgx(NVSDK_NGX_D3D12_EvaluateFeature(list, feature.get(), runtime.parameters.get(), nullptr), ApiCall::NgxEvaluateFeature); });
+        .and_then([&] {
+            const NVSDK_NGX_Result result = runtime.direct ? runtime.direct->Evaluate(list, feature.get(), runtime.parameters.get())
+                                                           : NVSDK_NGX_D3D12_EvaluateFeature(list, feature.get(), runtime.parameters.get(), nullptr);
+            return CheckNgx(result, ApiCall::NgxEvaluateFeature);
+        });
 }
 
 } // namespace real
