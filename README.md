@@ -77,7 +77,7 @@ Just a single `exe` (signed with a trusted certificate) written in C++ with zero
 # Requirements
 
 - Vanilla mode requires a 50-Series Nvidia GPU and Nvidia drivers `616.64` or newer.
-- Experimental RTX 40 compatibility mode requires driver `616.64` or newer, a compatible modified `nvngx_dlssnr.dll`, and `--allow-modified-dlssnr on`. This fork does not ship a modified model.
+- Experimental RTX 40 compatibility mode requires driver `616.64` or newer and a compatible modified `nvngx_dlssnr.dll`. In this fork the compatibility mode is enabled by default, so double-click launching works without extra command-line arguments. Use `--allow-modified-dlssnr off` to restore strict signature verification.
 - You must acquire `nvngx_dlssnr.dll` (available [here](https://web.archive.org/web/20260913005530/https://release-assets.githubusercontent.com/github-production-release-asset/1172082676/74962a93-ae18-48bf-a383-772583e7035e?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-09-13T01%3A42%3A57Z&rscd=attachment%3B+filename%3Dnvngx_dlssnr_310.8.0.zip&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-09-13T00%3A42%3A07Z&ske=2026-09-13T01%3A42%3A57Z&sks=b&skv=2018-11-09&sig=gti%2BBU6awa3LBMcrIxECIGL%2FnwBAcWqSc6E5BUP5Qrs%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc4OTI2NDUyOSwibmJmIjoxNzg5MjYwOTI5LCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.ljXg2tJDwLH4YMacu6QaOC3ef-QsXzFbEsx3l04Czes&response-content-disposition=attachment%3B%20filename%3Dnvngx_dlssnr_310.8.0.zip&response-content-type=application%2Foctet-stream)) and put it next to the app `exe`.
   - In vanilla mode the app verifies the DLL's NVIDIA signature. With `--allow-modified-dlssnr on`, only this neural-model DLL is accepted without signature verification; use only a file whose source you trust.
 
@@ -86,10 +86,12 @@ Just a single `exe` (signed with a trusted certificate) written in C++ with zero
 
 ### RTX 40 compatibility mode
 
-This fork can explicitly allow a modified `nvngx_dlssnr.dll` for RTX 40 compatibility experiments:
+This fork allows a modified `nvngx_dlssnr.dll` by default so an RTX 40 setup can be launched by double-clicking `FullScreenWrapperForDLSS5.exe`.
+
+To force the original strict behavior instead:
 
 ```
-FullScreenWrapperForDLSS5.exe --allow-modified-dlssnr on
+FullScreenWrapperForDLSS5.exe --allow-modified-dlssnr off
 ```
 
 Driver `616.64` or newer is still required because the wrapper continues to use the driver's NGX feature-18 support. The switch does **not** bypass the driver capability checks and does not permit modified NGX, DLSS Super Resolution, or optical-flow runtime DLLs. It only relaxes Authenticode verification for `nvngx_dlssnr.dll`.

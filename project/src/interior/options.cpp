@@ -383,7 +383,7 @@ Options DefaultOptions() noexcept
         ColorFormat::Rgba8,
         false,
         DirectoryPath{},
-        false,
+        true,
         std::nullopt,
         *kDefaultProjectId,
         NgxLogLevel::Off,
